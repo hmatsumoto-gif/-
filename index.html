@@ -6303,11 +6303,19 @@ function updateTime() {
 // ===== STORAGE =====
 function loadFromStorage() {
   try {
-    const jobs = localStorage.getItem('eight_jobs');
-    const favs = localStorage.getItem('eight_favs');
+    // 埋め込みデータがあればそれを優先（GitHubPages対応）
+    if (window.__EMBEDDED_JOBS__ && window.__EMBEDDED_JOBS__.length > 0) {
+      allJobs = window.__EMBEDDED_JOBS__;
+      favorites = new Set(window.__EMBEDDED_FAVS__ || []);
+      window.__EMBEDDED_JOBS__ = null;
+      window.__EMBEDDED_FAVS__ = null;
+    } else {
+      const jobs = localStorage.getItem('eight_jobs');
+      const favs = localStorage.getItem('eight_favs');
+      if (jobs) allJobs = JSON.parse(jobs);
+      if (favs) favorites = new Set(JSON.parse(favs));
+    }
     const notice = localStorage.getItem('eight_notice');
-    if (jobs) allJobs = JSON.parse(jobs);
-    if (favs) favorites = new Set(JSON.parse(favs));
     if (notice) document.getElementById('notice-text').innerHTML = notice;
   } catch(e) {}
 }
@@ -6631,26 +6639,31 @@ function exportHTML() {
     return;
   }
   updateTime();
-  let exportDoc = document.documentElement.outerHTML;
+
   const jobsJSON = JSON.stringify(allJobs);
   const favsJSON = JSON.stringify([...favorites]);
-  const noticeHTML = document.getElementById('notice-text').innerHTML;
-  const injectScript = `\n  \n`;
-  // 既存の埋め込みを除去してから再注入
-  exportDoc = exportDoc.replace(/\(function\(\)\{try\{[\s\S]*?\}catch\(e\)\{\}\}\(\)\);?\s*/g, '');
-  exportDoc = exportDoc.replace('<script>\n// ===== STATE =====', '<script>' + injectScript + '// ===== STATE =====');
-  const blob = new Blob([exportDoc], { type: 'text/html;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  const now = new Date();
-  const d = now.getFullYear() + ('0'+(now.getMonth()+1)).slice(-2) + ('0'+now.getDate()).slice(-2);
-  a.download = 'index_' + d + '_' + allJobs.length + '件.html';
-  document.body.appendChild(a); a.click(); document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-  showToast('✅ ' + allJobs.length + ' 件の求人データを書き出しました。GitHubにアップロードしてください。');
-}
 
+  let exportDoc = document.documentElement.outerHTML;
+
+  // 既存の埋め込みスクリプトを削除
+  exportDoc = exportDoc.replace(/\(function\(\)\{try\{[\s\S]*?\}catch\(e\)\{\}\}\(\)\);?\s*/g, '');
+
+  // 件数表示を更新
+  exportDoc = exportDoc.replace(
+    /[^<]*<\/span>/,
+    '' + allJobs.length + ''
+  );
+
+  // ★修正ポイント：全jobデータをHTMLに埋め込む
+  const initScript = '\n(function(){\n' +
+    '  try {\n' +
+    '    window.__EMBEDDED_JOBS__ = ' + jobsJSON + ';\n' +
+    '    window.__EMBEDDED_FAVS__ = ' + favsJSON + ';\n' +
+    '  } catch(e) {}\n' +
+    '})();\n';
+
+  exportDoc = exportDoc.replace(
+    '
 // ===== UTILS =====
 function escHtml(s) {
   return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
